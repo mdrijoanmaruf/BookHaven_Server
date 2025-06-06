@@ -35,12 +35,66 @@ async function run() {
       res.send('BookHaven Server is running');
     });
     
-    // Add a new book (only API endpoint we're keeping)
+    // Get all books
+    app.get('/api/books', async (req, res) => {
+      try {
+        const books = await booksCollection.find().toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+    // Get a specific book by ID
+    app.get('/api/books/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const book = await booksCollection.findOne(query);
+        
+        if (!book) {
+          return res.status(404).send({ message: 'Book not found' });
+        }
+        
+        res.send(book);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+    
+    // Add a new book
     app.post('/api/books', async (req, res) => {
       try {
         const book = req.body;
         const result = await booksCollection.insertOne(book);
         res.status(201).send(result);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+    // Update a book
+    app.put('/api/books/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedBook = req.body;
+        const options = { upsert: false };
+        
+        const update = {
+          $set: {
+            title: updatedBook.title,
+            author: updatedBook.author,
+            genre: updatedBook.genre,
+            description: updatedBook.description,
+            rating: updatedBook.rating,
+            image: updatedBook.image,
+            quantity: updatedBook.quantity
+          }
+        };
+        
+        const result = await booksCollection.updateOne(filter, update, options);
+        res.send(result);
       } catch (error) {
         res.status(500).send({ message: error.message });
       }
