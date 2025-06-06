@@ -1,12 +1,29 @@
 {
-  "name": "library-management-server",
+  "name": "bookhaven-server",
   "version": "1.0.0",
+  "description": "BookHaven Library Management System Server",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "library",
+    "management",
+    "books",
+    "api",
+    "bookhaven"
+  ],
+  "author": "BookHaven Team",
   "license": "ISC",
-  "description": ""
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mongodb": "^6.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
 }
