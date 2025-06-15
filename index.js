@@ -11,9 +11,9 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-const uri = process.env.MONGODB_URI || "mongodb+srv://libraryManagement:V64snpiDvEnF6Fqk@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority&appName=Cluster0";
+const uri = process.env.MONGODB_URI ;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -44,6 +44,8 @@ async function run() {
         res.status(500).send({ message: error.message });
       }
     });
+
+    
 
     // Get a specific book by ID
     app.get('/api/books/:id', async (req, res) => {
