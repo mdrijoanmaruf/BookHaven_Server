@@ -10,6 +10,26 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+
+// Firebase Admin 
+const admin = require("firebase-admin");
+const serviceAccount = require('./firebaseServiceAccount.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+app.get('/api/users', async (req, res) => {
+  const result = await admin.auth().listUsers(1000);
+  const users = result.users.map(u => ({
+    uid: u.uid,
+    email: u.email,
+    displayName: u.displayName
+  }));
+  res.send(users);
+});
+
+
 // MongoDB Connection
 const uri = process.env.MONGODB_URI ;
 
@@ -29,6 +49,8 @@ async function run() {
     
     // Database collections
     const booksCollection = client.db("bookHavenDB").collection("books");
+    const categoriesCollection = client.db("bookHavenDB").collection("categories");
+    const borrowedBooksCollection = client.db("bookHavenDB").collection("borrowedBooks");
     
     // Root route
     app.get('/', (req, res) => {
@@ -45,7 +67,27 @@ async function run() {
       }
     });
 
-    
+    // Get all book categories
+    app.get('/api/categories', async (req, res) => {
+      try {
+        const categories = await categoriesCollection.find().toArray();
+        res.send(categories);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+    // Get books by category
+    app.get('/api/books/category/:category', async (req, res) => {
+      try {
+        const category = req.params.category;
+        const query = { genre: category };
+        const books = await booksCollection.find(query).toArray();
+        res.send(books);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
 
     // Get a specific book by ID
     app.get('/api/books/:id', async (req, res) => {
@@ -99,6 +141,134 @@ async function run() {
         res.send(result);
       } catch (error) {
         res.status(500).send({ message: error.message });
+      }
+    });
+
+    // Borrow a book
+    app.post('/api/borrow', async (req, res) => {
+      try {
+        const { bookId, userId, userName, userEmail, returnDate } = req.body;
+        
+        // Get the book to check its quantity
+        const bookQuery = { _id: new ObjectId(bookId) };
+        const book = await booksCollection.findOne(bookQuery);
+        
+        if (!book) {
+          return res.status(404).send({ message: 'Book not found' });
+        }
+        
+        if (book.quantity <= 0) {
+          return res.status(400).send({ message: 'Book is out of stock' });
+        }
+        
+        // Create session for transaction
+        const session = client.startSession();
+        
+        try {
+          // Start transaction
+          session.startTransaction();
+          
+          // Decrement book quantity using $inc operator
+          const decrementResult = await booksCollection.updateOne(
+            bookQuery,
+            { $inc: { quantity: -1 } },
+            { session }
+          );
+          
+          if (decrementResult.modifiedCount !== 1) {
+            throw new Error('Failed to update book quantity');
+          }
+          
+          // Add to borrowed books collection
+          const borrowedBook = {
+            bookId: new ObjectId(bookId),
+            bookTitle: book.title,
+            bookImage: book.image,
+            bookAuthor: book.author,
+            userId,
+            userName,
+            userEmail,
+            borrowDate: new Date(),
+            returnDate: new Date(returnDate),
+            status: 'borrowed'
+          };
+          
+          const borrowResult = await borrowedBooksCollection.insertOne(borrowedBook, { session });
+          
+          if (!borrowResult.insertedId) {
+            throw new Error('Failed to add to borrowed books');
+          }
+          
+          // Commit transaction
+          await session.commitTransaction();
+          
+          res.status(201).send({ 
+            message: 'Book borrowed successfully',
+            bookId,
+            currentQuantity: book.quantity - 1
+          });
+        } catch (error) {
+          // Abort transaction on error
+          await session.abortTransaction();
+          throw error;
+        } finally {
+          // End session
+          session.endSession();
+        }
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+    
+    // Get borrowed books for a user
+    app.get('/api/borrowed-books/:userId', async (req, res) => {
+      try {
+        const userId = req.params.userId;
+        const query = { userId: userId };
+        const borrowedBooks = await borrowedBooksCollection.find(query).toArray();
+        res.send(borrowedBooks);
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+    
+    // Return a borrowed book
+    app.post('/api/return-book', async (req, res) => {
+      try {
+        const { borrowId, bookId, userId } = req.body;
+        
+        // Validate required fields
+        if (!borrowId || !bookId || !userId) {
+          return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        // Update the borrow record to mark it as returned
+        const borrowResult = await borrowedBooksCollection.updateOne(
+          { _id: new ObjectId(borrowId), userId: userId }, 
+          { $set: { status: 'returned', returnedDate: new Date() } }
+        );
+
+        if (borrowResult.modifiedCount === 0) {
+          return res.status(404).json({ 
+            success: false, 
+            message: 'Borrow record not found or you do not have permission to return this book' 
+          });
+        }
+
+        // Increment the book quantity using $inc operator
+        const bookResult = await booksCollection.updateOne(
+          { _id: new ObjectId(bookId) },
+          { $inc: { quantity: 1 } }
+        );
+
+        if (bookResult.modifiedCount === 0) {
+          return res.status(404).json({ success: false, message: 'Book not found' });
+        }
+
+        res.json({ success: true, message: 'Book returned successfully' });
+      } catch (error) {
+        console.error('Error returning book:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
       }
     });
     
