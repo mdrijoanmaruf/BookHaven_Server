@@ -2,6 +2,10 @@
 
 This is the backend server for the BookHaven Library Management System, providing API endpoints for book management, user authentication, and book borrowing/returning functionality.
 
+## Live Application
+
+The frontend application is deployed at: [BookHaven](https://rijoan-book-haven.netlify.app/)
+
 ## Features
 
 - **Book Management**: CRUD operations for books in the library
