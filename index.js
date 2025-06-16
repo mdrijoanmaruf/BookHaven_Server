@@ -21,7 +21,7 @@ admin.initializeApp({
 });
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'bookhaven-jwt-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET || 'secret-key';
 
 // Verify JWT Token Middleware
 const verifyJWT = (req, res, next) => {
@@ -52,9 +52,12 @@ app.get('/api/users', async (req, res) => {
   res.send(users);
 });
 
+const DB_USER = process.env.DB_USER;
+const DB_PASS = process.env.DB_PASS;
+
 
 // MongoDB Connection
-const uri = process.env.MONGODB_URI ;
+const uri = `mongodb+srv://${DB_USER}:${DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`
 
 
 const client = new MongoClient(uri, {
