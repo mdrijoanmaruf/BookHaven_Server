@@ -52,13 +52,12 @@ app.get('/api/users', async (req, res) => {
   res.send(users);
 });
 
-const DB_USER = process.env.DB_USER;
-const DB_PASS = process.env.DB_PASS;
-
-
 // MongoDB Connection
-const uri = `mongodb+srv://${DB_USER}:${DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`
-
+// Use MONGODB_URI if available, otherwise construct from DB_USER and DB_PASS
+const uri = process.env.MONGODB_URI || 
+  `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`;
+// const uri = process.env.MONGODB_URI || 
+//   `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, {
   serverApi: {
