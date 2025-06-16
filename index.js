@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -18,6 +19,28 @@ const serviceAccount = require('./firebaseServiceAccount.json');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
+
+// JWT Secret
+const JWT_SECRET = process.env.JWT_SECRET || 'bookhaven-jwt-secret-key';
+
+// Verify JWT Token Middleware
+const verifyJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).send({ message: 'Unauthorized access' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: 'Forbidden access' });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
 
 app.get('/api/users', async (req, res) => {
   const result = await admin.auth().listUsers(1000);
@@ -55,6 +78,24 @@ async function run() {
     // Root route
     app.get('/', (req, res) => {
       res.send('BookHaven Server is running');
+    });
+    
+    // JWT Token Generation Route
+    app.post('/api/jwt', async (req, res) => {
+      try {
+        const user = req.body;
+        
+        if (!user || !user.uid) {
+          return res.status(400).send({ message: 'Invalid user data' });
+        }
+        
+        // Generate token with user data and expiration
+        const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
+        
+        res.send({ token });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
     });
     
     // Get all books
@@ -106,8 +147,8 @@ async function run() {
       }
     });
     
-    // Add a new book
-    app.post('/api/books', async (req, res) => {
+    // Add a new book (protected route)
+    app.post('/api/books', verifyJWT, async (req, res) => {
       try {
         const book = req.body;
         const result = await booksCollection.insertOne(book);
@@ -117,8 +158,8 @@ async function run() {
       }
     });
 
-    // Update a book
-    app.put('/api/books/:id', async (req, res) => {
+    // Update a book (protected route)
+    app.put('/api/books/:id', verifyJWT, async (req, res) => {
       try {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -144,10 +185,15 @@ async function run() {
       }
     });
 
-    // Borrow a book
-    app.post('/api/borrow', async (req, res) => {
+    // Borrow a book (protected route)
+    app.post('/api/borrow', verifyJWT, async (req, res) => {
       try {
         const { bookId, userId, userName, userEmail, returnDate } = req.body;
+        
+        // Verify user from token matches the request
+        if (req.decoded.uid !== userId) {
+          return res.status(403).send({ message: 'Forbidden: User ID mismatch' });
+        }
         
         // Get the book to check its quantity
         const bookQuery = { _id: new ObjectId(bookId) };
@@ -159,6 +205,20 @@ async function run() {
         
         if (book.quantity <= 0) {
           return res.status(400).send({ message: 'Book is out of stock' });
+        }
+        
+        // Check if user has already borrowed this book and not returned it yet
+        const existingBorrow = await borrowedBooksCollection.findOne({
+          bookId: new ObjectId(bookId),
+          userId: userId,
+          status: 'borrowed'
+        });
+        
+        if (existingBorrow) {
+          return res.status(400).send({ 
+            message: 'You have already borrowed this book. You can borrow it again after returning it.',
+            alreadyBorrowed: true
+          });
         }
         
         // Create session for transaction
@@ -185,6 +245,7 @@ async function run() {
             bookTitle: book.title,
             bookImage: book.image,
             bookAuthor: book.author,
+            bookCategory: book.genre,
             userId,
             userName,
             userEmail,
@@ -220,10 +281,16 @@ async function run() {
       }
     });
     
-    // Get borrowed books for a user
-    app.get('/api/borrowed-books/:userId', async (req, res) => {
+    // Get borrowed books for a user (protected route)
+    app.get('/api/borrowed-books/:userId', verifyJWT, async (req, res) => {
       try {
         const userId = req.params.userId;
+        
+        // Verify user from token matches the request
+        if (req.decoded.uid !== userId) {
+          return res.status(403).send({ message: 'Forbidden: User ID mismatch' });
+        }
+        
         const query = { userId: userId };
         const borrowedBooks = await borrowedBooksCollection.find(query).toArray();
         res.send(borrowedBooks);
@@ -232,10 +299,15 @@ async function run() {
       }
     });
     
-    // Return a borrowed book
-    app.post('/api/return-book', async (req, res) => {
+    // Return a borrowed book (protected route)
+    app.post('/api/return-book', verifyJWT, async (req, res) => {
       try {
         const { borrowId, bookId, userId } = req.body;
+        
+        // Verify user from token matches the request
+        if (req.decoded.uid !== userId) {
+          return res.status(403).send({ message: 'Forbidden: User ID mismatch' });
+        }
         
         // Validate required fields
         if (!borrowId || !bookId || !userId) {
