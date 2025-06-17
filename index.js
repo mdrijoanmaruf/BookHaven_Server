@@ -56,8 +56,6 @@ app.get('/api/users', async (req, res) => {
 // Use MONGODB_URI if available, otherwise construct from DB_USER and DB_PASS
 const uri = process.env.MONGODB_URI || 
   `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`;
-// const uri = process.env.MONGODB_URI || 
-//   `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.0ykpaho.mongodb.net/bookHavenDB?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, {
   serverApi: {
